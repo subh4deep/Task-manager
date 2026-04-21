@@ -19,12 +19,7 @@ router.get('/', async (req, res) => {
     const db = await connectDB();
     const { status, search, assignedTo } = req.query;
 
-    const query = {
-      $or: [
-        { createdBy: req.user.userId },
-        { assignedTo: req.user.userId }
-      ]
-    };
+    let query = {}; // 🔥 everyone can see all tasks
 
     // ✅ Status filter
     if (status && status !== 'all') {
@@ -34,16 +29,12 @@ router.get('/', async (req, res) => {
       }
     }
 
-    // ✅ Search fix (no overwrite bug)
+    // ✅ Search filter
     if (search) {
-      query.$and = query.$and || [];
-
-      query.$and.push({
-        $or: [
-          { title: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } }
-        ]
-      });
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
     }
 
     // ✅ Assigned filter
@@ -58,12 +49,13 @@ router.get('/', async (req, res) => {
       .toArray();
 
     // 👇 Attach user info
-    const userIds = [
-      ...new Set([
-        ...tasks.map((t) => t.createdBy),
-        ...tasks.filter((t) => t.assignedTo).map((t) => t.assignedTo),
-      ])
-    ];
+  const userIds = [
+  ...new Set([
+    ...tasks.map((t) => t.createdBy),
+    ...tasks.filter((t) => t.assignedTo).map((t) => t.assignedTo),
+    ...tasks.flatMap((t) => t.updatedBy || []),
+    ])
+  ];
 
     const users = await db
       .collection('users')
@@ -81,6 +73,11 @@ router.get('/', async (req, res) => {
       assignedToUser: task.assignedTo
         ? userMap[task.assignedTo]
         : null,
+
+      // 🔥 ADD THIS (IMPORTANT)
+      updatedByUsers: (task.updatedBy || [])
+      .map(id => userMap[id])
+      .filter(Boolean),
     }));
 
     return res.json({ tasks: tasksWithUsers });
@@ -110,17 +107,20 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Invalid status value' });
     }
 
-    const task = {
-      id: uuidv4(),
-      title,
-      description: description || '',
-      status: normalizedStatus,
-      dueDate: dueDate || null,
-      assignedTo: assignedTo || null,
-      createdBy: req.user.userId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+const task = {
+  id: uuidv4(),
+  title,
+  description: description || '',
+  status: normalizedStatus,
+  dueDate: dueDate || null,
+  assignedTo: assignedTo || null,
+  createdBy: req.user.userId,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+
+  // 🔥 FIX: track creator if status is not todo
+  updatedBy: normalizedStatus !== 'todo' ? [req.user.userId] : []
+};
 
     await db.collection('tasks').insertOne(task);
 
@@ -150,12 +150,11 @@ router.put('/:id', async (req, res) => {
     }
 
     // 🔒 Permission check
-    if (
-      task.createdBy !== req.user.userId &&
-      task.assignedTo !== req.user.userId
-    ) {
-      return res.status(403).json({ error: 'Forbidden' });
+   if (task.assignedTo) {
+    if (task.assignedTo !== req.user.userId) {
+      return res.status(403).json({ error: 'Only assigned user can update this task' });
     }
+  }
 
     // ✅ Validate status if updating
     if (req.body.status) {
@@ -168,10 +167,18 @@ router.put('/:id', async (req, res) => {
       req.body.status = normalizedStatus;
     }
 
-    const updateData = {
+   const updateData = {
       ...req.body,
       updatedAt: new Date().toISOString()
     };
+
+    
+// 🔥 Track all participants (no duplicates)
+if (req.body.status && req.body.status !== 'todo') {
+  updateData.updatedBy = Array.from(
+    new Set([...(task.updatedBy || []), req.user.userId])
+  );
+}
 
     // ❌ Prevent overriding important fields
     delete updateData.id;

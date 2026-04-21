@@ -138,25 +138,90 @@ function AuthForm() {
   );
 }
 
-function TaskCard({ task, onEdit, onDelete }) {
-  const statusColors = { todo: 'bg-slate-100 text-slate-800 border-slate-300', 'in-progress': 'bg-blue-100 text-blue-800 border-blue-300', done: 'bg-green-100 text-green-800 border-green-300' };
-  const statusLabels = { todo: 'To Do', 'in-progress': 'In Progress', done: 'Done' };
+function TaskCard({ task, onEdit, onDelete, user }) {
+  const statusColors = {
+    todo: 'bg-slate-100 text-slate-800 border-slate-300',
+    'in-progress': 'bg-blue-100 text-blue-800 border-blue-300',
+    done: 'bg-green-100 text-green-800 border-green-300'
+  };
+
+  const statusLabels = {
+    todo: 'To Do',
+    'in-progress': 'In Progress',
+    done: 'Done'
+  };
+
+  // 🔥 permission logic
+  const canEdit = !task.assignedTo || task.assignedTo === user?.id;
 
   return (
     <Card className="mb-3 hover:shadow-md transition-shadow">
       <CardContent className="p-4">
+
+        {/* HEADER */}
         <div className="flex justify-between items-start mb-2">
           <h3 className="font-semibold text-lg">{task.title}</h3>
-          <div className="flex gap-1">
-            <Button variant="ghost" size="sm" onClick={() => onEdit(task)} className="h-8 w-8 p-0"><Edit className="h-4 w-4" /></Button>
-            <Button variant="ghost" size="sm" onClick={() => onDelete(task.id)} className="h-8 w-8 p-0 text-red-500 hover:text-red-700"><Trash2 className="h-4 w-4" /></Button>
-          </div>
+
+          {/* 🔥 show buttons only if allowed */}
+          {canEdit && (
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onEdit(task)}
+                className="h-8 w-8 p-0"
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onDelete(task.id)}
+                className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
-        {task.description && <p className="text-sm text-muted-foreground mb-3">{task.description}</p>}
+
+        {/* DESCRIPTION */}
+        {task.description && (
+          <p className="text-sm text-muted-foreground mb-2">
+            {task.description}
+          </p>
+        )}
+
+        {/* 🔥 PARTICIPANTS */}
+        {task.status === "done" && task.updatedByUsers?.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-gray-500 mb-2 flex-wrap">
+            <User className="h-3 w-3" />
+            <span>
+              {task.updatedByUsers.map(u => u.name).join(", ")}
+            </span>
+          </div>
+        )}
+
+        {/* BADGES */}
         <div className="flex flex-wrap gap-2 text-xs">
-          <Badge className={statusColors[task.status]} variant="outline">{statusLabels[task.status]}</Badge>
-          {task.dueDate && <Badge variant="outline" className="flex items-center gap-1"><Calendar className="h-3 w-3" />{new Date(task.dueDate).toLocaleDateString()}</Badge>}
-          {task.assignedToUser && <Badge variant="outline" className="flex items-center gap-1"><User className="h-3 w-3" />{task.assignedToUser.name}</Badge>}
+          <Badge className={statusColors[task.status]} variant="outline">
+            {statusLabels[task.status]}
+          </Badge>
+
+          {task.dueDate && (
+            <Badge variant="outline" className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              {new Date(task.dueDate).toLocaleDateString()}
+            </Badge>
+          )}
+
+          {task.assignedToUser && (
+            <Badge variant="outline" className="flex items-center gap-1">
+              <User className="h-3 w-3" />
+              {task.assignedToUser.name}
+            </Badge>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -251,6 +316,7 @@ function TaskDialog({ task, open, onOpenChange, onSave, users }) {
                 onValueChange={(value) =>
                   setFormData({ ...formData, status: value })
                 }
+                disabled={task?.status === "done"} // 🔒 LOCK
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select status" />
@@ -450,7 +516,16 @@ function Dashboard() {
                 <div className="space-y-3">
                   {items.length === 0
                     ? <p className="text-sm text-slate-400 text-center py-8">No tasks</p>
-                    : items.map((task) => <TaskCard key={task.id} task={task} onEdit={(t) => { setEditingTask(t); setDialogOpen(true); }} onDelete={handleDeleteTask} />)
+                    : items.map((task) => <TaskCard
+                      key={task.id}
+                      task={task}
+                      user={user}
+                      onEdit={(t) => {
+                        setEditingTask(t);
+                        setDialogOpen(true);
+                      }}
+                      onDelete={handleDeleteTask}
+                    />)
                   }
                 </div>
               </div>

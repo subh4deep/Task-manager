@@ -6,31 +6,29 @@ import { createToken, verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// ✅ FIXED COOKIE OPTIONS
-const isProd = process.env.NODE_ENV === 'production';
-
+// 🔥 FORCE PRODUCTION COOKIE SETTINGS (important for Render + Vercel)
 const COOKIE_OPTIONS = {
   httpOnly: true,
   path: '/',
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-
-  // ✅ correct setup
-  sameSite: isProd ? 'None' : 'lax',
-  secure: isProd
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  sameSite: 'None', // 🔥 REQUIRED for cross-site
+  secure: true      // 🔥 REQUIRED for HTTPS
 };
 
-// POST /api/auth/register
+// ================= REGISTER =================
 router.post('/register', async (req, res) => {
   try {
     const { email, password, name } = req.body;
 
     if (!email || !password || !name) {
-      return res.status(400).json({ error: 'Email, password, and name are required' });
+      return res.status(400).json({
+        error: 'Email, password, and name are required'
+      });
     }
 
     const db = await connectDB();
-    const existingUser = await db.collection('users').findOne({ email });
 
+    const existingUser = await db.collection('users').findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
@@ -50,68 +48,76 @@ router.post('/register', async (req, res) => {
 
     const token = createToken(userId, email);
 
-    // ✅ SET COOKIE
+    // 🔥 SET COOKIE
     res.cookie('token', token, COOKIE_OPTIONS);
 
     return res.status(201).json({
       message: 'User registered successfully',
       user: { id: userId, email, name },
     });
+
   } catch (error) {
     console.error('Register error:', error);
     return res.status(500).json({ error: error.message });
   }
 });
 
-// POST /api/auth/login
+// ================= LOGIN =================
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      return res.status(400).json({
+        error: 'Email and password are required'
+      });
     }
 
     const db = await connectDB();
-    const user = await db.collection('users').findOne({ email });
 
+    const user = await db.collection('users').findOne({ email });
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const isValid = await bcrypt.compare(password, user.password);
-
     if (!isValid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const token = createToken(user.id, user.email);
 
-    // ✅ SET COOKIE
+    // 🔥 SET COOKIE
     res.cookie('token', token, COOKIE_OPTIONS);
 
     return res.json({
       message: 'Login successful',
-      user: { id: user.id, email: user.email, name: user.name },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name
+      },
     });
+
   } catch (error) {
     console.error('Login error:', error);
     return res.status(500).json({ error: error.message });
   }
 });
 
-// POST /api/auth/logout
+// ================= LOGOUT =================
 router.post('/logout', (req, res) => {
   res.clearCookie('token', {
+    httpOnly: true,
     path: '/',
     sameSite: 'None',
-    secure: process.env.NODE_ENV === 'production',
+    secure: true
   });
 
   return res.json({ message: 'Logout successful' });
 });
 
-// GET /api/auth/me
+// ================= GET CURRENT USER =================
 router.get('/me', verifyToken, async (req, res) => {
   try {
     const db = await connectDB();
@@ -126,6 +132,7 @@ router.get('/me', verifyToken, async (req, res) => {
     }
 
     return res.json({ user: userData });
+
   } catch (error) {
     console.error('Me error:', error);
     return res.status(500).json({ error: error.message });
