@@ -32,6 +32,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/users', userRoutes);
 
+app.get('/', (req, res) => {
+  res.send('🚀 Task Manager API is running');
+});
+
 // Health check
 app.get('/api', (req, res) => {
   res.json({ message: 'Task Management API is running' });
